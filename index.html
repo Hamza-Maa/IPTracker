@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Firebase IP Test</title>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
+</head>
+<body>
+  <h2>Firebase IP Test</h2>
+
+  <input type="email" id="email" placeholder="Email" /><br />
+  <input type="password" id="password" placeholder="Password" /><br />
+  <button onclick="signIn()">Sign In</button>
+  <button onclick="signUp()">Sign Up</button>
+
+  <p id="result"></p>
+
+  <script>
+    // TODO: Replace with your Firebase project config
+    const firebaseConfig = {
+      apiKey: "AIzaSyDK3THuADQMQwAFQO6PNfoKX24Oy78vgX8",
+      authDomain: "mobileapp-8eb11.firebaseapp.com",
+      projectId: "mobileapp-8eb11",
+      // Optional: storageBucket, messagingSenderId, appId
+    };
+
+    firebase.initializeApp(firebaseConfig);
+
+    async function signIn() {
+      const email = document.getElementById("email").value;
+      const password = document.getElementById("password").value;
+
+      try {
+        const userCredential = await firebase.auth().signInWithEmailAndPassword(email, password);
+        const idToken = await userCredential.user.getIdToken();
+
+        const res = await fetch("http://localhost:3000/get-ip", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ idToken }),
+        });
+
+        const data = await res.json();
+        document.getElementById("result").innerText = "IP: " + data.ip;
+      } catch (err) {
+        console.error(err);
+        document.getElementById("result").innerText = "Error: " + err.message;
+      }
+    }
+
+    async function signUp() {
+      const email = document.getElementById("email").value;
+      const password = document.getElementById("password").value;
+
+      try {
+        await firebase.auth().createUserWithEmailAndPassword(email, password);
+        alert("User created! Now sign in.");
+      } catch (err) {
+        console.error(err);
+        alert("Sign up error: " + err.message);
+      }
+    }
+  </script>
+</body>
+</html>
