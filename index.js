@@ -10,7 +10,8 @@ app.use(cors({ origin: "*" }));
 app.use(express.json());
 
 // Load service account key
-const serviceAccount = require("./serviceAccountKey.json");
+const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+
 
 // Initialize Firebase Admin SDK
 admin.initializeApp({
