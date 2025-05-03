@@ -6,10 +6,7 @@ require("dotenv").config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Enable CORS for all origins (for testing)
 app.use(cors());
-
-// Middleware to parse JSON
 app.use(express.json());
 
 // Load service account key
@@ -28,7 +25,7 @@ const getClientIp = (req) => {
   return forwarded ? forwarded.split(",")[0] : req.connection.remoteAddress;
 };
 
-// POST /get-ip: Verify token, get IP, and store it in Firestore
+// POST /get-ip: Verify token, get IP, register user, and store IP
 app.post("/get-ip", async (req, res) => {
   const { idToken } = req.body;
 
@@ -37,49 +34,65 @@ app.post("/get-ip", async (req, res) => {
   }
 
   try {
-    // Verify Firebase ID token
+    // Verify ID token
     const decodedToken = await admin.auth().verifyIdToken(idToken);
     const uid = decodedToken.uid;
+
+    // Get user info from Firebase Auth
+    const userRecord = await admin.auth().getUser(uid);
+    const email = userRecord.email;
+
+    // Check if user exists in 'users' collection
+    const userDocRef = db.collection("users").doc(uid);
+    const userDoc = await userDocRef.get();
+
+    if (!userDoc.exists) {
+      // Create new user doc
+      await userDocRef.set({
+        uid,
+        email,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    }
 
     // Get client IP
     const ip = getClientIp(req);
 
-    // Save to Firestore
+    // Store IP info
     await db.collection("user_ips").doc(uid).set({
       ip,
       lastLogin: admin.firestore.FieldValue.serverTimestamp(),
     });
 
-    res.json({ uid, ip });
+    res.json({ uid, email, ip });
   } catch (error) {
-    console.error("Error:", error);
-    res.status(401).json({ error: "Invalid ID token" });
+    console.error("Error in /get-ip:", error);
+    res.status(401).json({ error: "Invalid ID token or internal error" });
   }
 });
 
 // GET /get-ip-by-uid/:uid - Get IP info by UID
 app.get("/get-ip-by-uid/:uid", async (req, res) => {
-    const { uid } = req.params;
-  
-    if (!uid) {
-      return res.status(400).json({ error: "Missing UID" });
+  const { uid } = req.params;
+
+  if (!uid) {
+    return res.status(400).json({ error: "Missing UID" });
+  }
+
+  try {
+    const docRef = db.collection("user_ips").doc(uid);
+    const doc = await docRef.get();
+
+    if (!doc.exists) {
+      return res.status(404).json({ error: "No IP data found for this UID" });
     }
-  
-    try {
-      const docRef = db.collection("user_ips").doc(uid);
-      const doc = await docRef.get();
-  
-      if (!doc.exists) {
-        return res.status(404).json({ error: "No IP data found for this UID" });
-      }
-  
-      res.json({ uid, ...doc.data() });
-    } catch (error) {
-      console.error("Error fetching IP data:", error);
-      res.status(500).json({ error: "Server error" });
-    }
-  });
-  
+
+    res.json({ uid, ...doc.data() });
+  } catch (error) {
+    console.error("Error fetching IP data:", error);
+    res.status(500).json({ error: "Server error" });
+  }
+});
 
 // Start server
 app.listen(PORT, () => {
