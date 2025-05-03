@@ -6,7 +6,7 @@ require("dotenv").config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-app.use(cors());
+app.use(cors({ origin: "*" }));
 app.use(express.json());
 
 // Load service account key
@@ -19,13 +19,19 @@ admin.initializeApp({
 
 const db = admin.firestore();
 
-// Helper: Get client's IP address
+// 🔍 Helper: Get client's IP address
 const getClientIp = (req) => {
-  const forwarded = req.headers["x-forwarded-for"];
-  return forwarded ? forwarded.split(",")[0] : req.connection.remoteAddress;
+  const xForwardedFor = req.headers["x-forwarded-for"];
+  const ip =
+    xForwardedFor?.split(",")[0]?.trim() ||
+    req.socket?.remoteAddress ||
+    req.connection?.remoteAddress ||
+    req.ip;
+
+  return ip;
 };
 
-// POST /get-ip: Verify token, get IP, register user, and store IP
+// ✅ POST /get-ip: Verify token, get IP, register user, and store IP
 app.post("/get-ip", async (req, res) => {
   const { idToken } = req.body;
 
@@ -34,20 +40,19 @@ app.post("/get-ip", async (req, res) => {
   }
 
   try {
-    // Verify ID token
+    // 1. Verify ID token
     const decodedToken = await admin.auth().verifyIdToken(idToken);
     const uid = decodedToken.uid;
 
-    // Get user info from Firebase Auth
+    // 2. Get user info
     const userRecord = await admin.auth().getUser(uid);
     const email = userRecord.email;
 
-    // Check if user exists in 'users' collection
+    // 3. Check/create user in Firestore
     const userDocRef = db.collection("users").doc(uid);
     const userDoc = await userDocRef.get();
 
     if (!userDoc.exists) {
-      // Create new user doc
       await userDocRef.set({
         uid,
         email,
@@ -55,15 +60,17 @@ app.post("/get-ip", async (req, res) => {
       });
     }
 
-    // Get client IP
+    // 4. Resolve client IP
     const ip = getClientIp(req);
+    console.log(`User: ${email}, IP: ${ip}`);
 
-    // Store IP info
+    // 5. Store IP info
     await db.collection("user_ips").doc(uid).set({
       ip,
       lastLogin: admin.firestore.FieldValue.serverTimestamp(),
     });
 
+    // 6. Respond with user data
     res.json({ uid, email, ip });
   } catch (error) {
     console.error("Error in /get-ip:", error);
@@ -71,7 +78,7 @@ app.post("/get-ip", async (req, res) => {
   }
 });
 
-// GET /get-ip-by-uid/:uid - Get IP info by UID
+// 📥 GET /get-ip-by-uid/:uid - Fetch stored IP info for a user
 app.get("/get-ip-by-uid/:uid", async (req, res) => {
   const { uid } = req.params;
 
@@ -94,7 +101,7 @@ app.get("/get-ip-by-uid/:uid", async (req, res) => {
   }
 });
 
-// Start server
+// 🚀 Start the server
 app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
+  console.log(`✅ Server running on http://localhost:${PORT}`);
 });
